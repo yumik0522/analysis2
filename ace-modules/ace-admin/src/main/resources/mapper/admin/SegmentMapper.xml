@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.security.admin.mapper.SegmentMapper">
+	
+	<select id="getSegmentList" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT COALESCE(a.param_name,round(a.num_val)||' Seg-'||pf.param_name) AS segmentation
+		,a.param_key AS segmentation_key,round(a.num_val) AS num_segment,pf.param_key AS profile_key,f.param_key AS factor_key,round(f.num_val) AS num_factor
+		,fp.select_factor,COALESCE(fp.total_cust,0) AS total_cust,COALESCE(round(sp.num_val),fp.sample_size,0) AS assigned_cust
+		,CASE WHEN arc.module_key IS NULL THEN 0 ELSE 1 END AS lock_seg
+		FROM project_param a
+		LEFT OUTER JOIN project_param sp
+		ON sp.parent_key=a.param_key AND a.project_id=sp.project_id AND sp.param_type='SEG_PARAM' AND sp.param_name='ASSIGNED_CUST'
+		INNER JOIN project_param pf
+		ON a.parent_key=pf.param_key AND a.project_id=pf.project_id AND pf.param_type='SEG_PROFILE'
+		INNER JOIN project_param f
+		ON pf.parent_key=f.param_key AND a.project_id=f.project_id AND f.param_type='FACTOR_SOLUTION'
+		LEFT OUTER JOIN (
+		SELECT parent_key,max(CASE WHEN param_name='SELECT_FACTOR' THEN char_val END) AS select_factor
+		,round(max(CASE WHEN param_name='TOTAL_CUST' THEN num_val END)) AS total_cust
+		,round(max(CASE WHEN param_name='SAMPLE_SIZE' THEN num_val END)) AS sample_size
+		FROM project_param fp
+		WHERE project_id=#{projectId} AND param_type='FACTOR_SLN_PARAM'
+		GROUP BY parent_key
+		) fp
+		ON fp.parent_key=pf.param_key
+		INNER JOIN project_param c
+		ON f.parent_key=c.param_key AND a.project_id=c.project_id AND c.param_type='FACTOR_CORR'
+		LEFT OUTER JOIN (
+		SELECT module_key
+		FROM project_param_arc 
+		WHERE module_type IN ('SEG_MAINTENANCE', 'SEG_LOCK') AND param_type='SEGMENTATION' AND project_id=#{projectId} GROUP BY 1
+		) arc
+		ON arc.module_key=''||a.param_key
+		WHERE a.param_type='SEGMENTATION' AND a.project_id=#{projectId}
+		ORDER BY a.created_date DESC;
+		
+	</select>
+
+</mapper>
